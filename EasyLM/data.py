@@ -127,13 +127,26 @@ class HuggingfaceDataset(object):
     """ Huggingface dataset, where the dataset is loaded using the huggingface
         datasets.load_dataset() function.
     """
+    def get_all_gcp_files(self,bucket_name, prefix, delimiter=None):
+          storage_client = storage.Client()
+          public_url="https://storage.googleapis.com/"
+          blobs = storage_client.list_blobs(bucket_name, prefix=prefix, delimiter=delimiter)
+          train_files=[]
+          for blob in blobs:
+             if "parquet" in blob.name:
+                train_files.append(public_url+bucket_name+"/"+blob.name)
+          return train_files[1:]
 
+    
     @staticmethod
     def get_default_config(updates=None):
         config = mlxu.config_dict()
-        config.path = 'c4'
-        config.name = 'en'
+        config.path = ''
+        config.name = ''
         config.split = 'train'
+        config.parquet=False
+        config.gcp_bucket=""
+        config.gcp_folder=""
         config.streaming = False
         config.seq_length = 1024
         config.batch_size = 8
@@ -147,9 +160,13 @@ class HuggingfaceDataset(object):
         split = self.config.split if self.config.split != '' else None
         self._tokenizer = tokenizer
         self._text_processor = text_processor
-        self._dataset = load_dataset(
-            self.config.path, name, split=split, streaming=self.config.streaming
-        )
+        if self.config.parquet==True:
+                 all_gcp_files=self.get_all_gcp_files(self.config.gcp_bucket,self.config.gcp_folder)
+                 print(all_gcp_files)
+                 data_files = {"train":all_gcp_files}
+                 self._dataset = load_dataset("parquet", data_files=data_files, split="train",streaming=self.config.streaming)
+        else:
+                 self._dataset = load_dataset(self.config.path, name, split=split, streaming=self.config.streaming)
 
     def __iter__(self):
         chunk_size = self.config.batch_size * self.config.seq_length
